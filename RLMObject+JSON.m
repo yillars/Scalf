@@ -8,6 +8,7 @@
 
 #import "RLMObject+JSON.h"
 #import "NSObject+Mapping.h"
+#import "FBSDKMutableCopying.h"
 #import <objc/runtime.h>
 
 static id MCValueFromInvocation(id object, SEL selector) {
@@ -32,6 +33,8 @@ static NSString *MCTypeStringFromPropertyKey(Class class, NSString *key) {
 }
 
 @interface NSString (MCJSON)
+
+- (NSString *)snakeToPascalCase;
 
 - (NSString *)snakeToCamelCase;
 
@@ -91,9 +94,17 @@ static NSString *MCTypeStringFromPropertyKey(Class class, NSString *key) {
     return self;
 }
 
-- (NSDictionary *)JSONDictionary {
-    return [self mc_createJSONDictionary];
-}
+  - ( NSDictionary * )JSONMutableDictionary:( BOOL )useCamel; {
+      return [[self mc_createJSONDictionary:useCamel] mutableCopy];
+  }
+
+  - ( NSDictionary * )JSONDictionary {
+      return [self mc_createJSONDictionary:YES];
+  }
+
+  - ( NSDictionary * )JSONDictionary:( BOOL )useCamel; {
+      return [self mc_createJSONDictionary:useCamel];
+  }
 
 - (id)primaryKeyValue {
     NSString *primaryKey = [[self class] primaryKey];
@@ -257,7 +268,7 @@ static NSString *MCTypeStringFromPropertyKey(Class class, NSString *key) {
                 Class                    itemClass = NSClassFromString(array.objectClassName);
                 for (NSMutableDictionary *itemDictionary in(NSArray *) value) {
                     if (realm) {
-                        id item = [itemClass mc_createOrUpdateInRealm:realm withJSONDictionary:itemDictionary];
+                        id item = [itemClass mc_createOrUpdateInRealm:realm withJSONDictionary:itemDictionary.mutableCopy];
                         [array addObject:item];
                     }
                     else {
@@ -289,9 +300,17 @@ static NSString *MCTypeStringFromPropertyKey(Class class, NSString *key) {
     }
 }
 
-- (id)mc_createJSONDictionary {
+- (id)mc_createJSONDictionary:(BOOL)useCamel {
+
+    NSString *case_method = @"snakeToCamelCase";
+    if(!useCamel){
+        case_method = @"snakeToPascalCase";
+    }
+
     NSMutableDictionary *result  = [NSMutableDictionary dictionary];
     NSDictionary        *mapping = [[self class] mc_outboundMapping];
+
+    NSLog(@"");
 
     for (NSString *objectKeyPath in mapping) {
         NSString *dictionaryKeyPath = mapping[objectKeyPath];
@@ -311,13 +330,13 @@ static NSString *MCTypeStringFromPropertyKey(Class class, NSString *key) {
             Class propertyClass = [modelClass mc_classForPropertyKey:objectKeyPath];
 
             if ([propertyClass isSubclassOfClass:[RLMObject class]]) {
-                value = [value mc_createJSONDictionary];
+                value = [value mc_createJSONDictionary:useCamel];
                 NSLog(@"");
             }
             else if ([propertyClass isSubclassOfClass:[RLMArray class]]) {
                 NSMutableArray *array = [NSMutableArray array];
                 for (id        item in(RLMArray *) value) {
-                    [array addObject:[item mc_createJSONDictionary]];
+                    [array addObject:[item mc_createJSONDictionary:useCamel]];
                 }
                 value = array.count ? [array copy] : nil;
             }
@@ -337,7 +356,7 @@ static NSString *MCTypeStringFromPropertyKey(Class class, NSString *key) {
             id            currentDictionary  = result;
             for (NSString *component in keyPathComponents) {
                 if ([currentDictionary valueForKey:component] == nil) {
-                    [currentDictionary setValue:[NSMutableDictionary dictionary] forKey:component.snakeToCamelCase];
+                    [currentDictionary setValue:[NSMutableDictionary dictionary] forKey:[component valueForKey:case_method]];
                 }
                 currentDictionary = [currentDictionary valueForKey:component];
             }
@@ -347,7 +366,7 @@ static NSString *MCTypeStringFromPropertyKey(Class class, NSString *key) {
             }
 
             if (value)
-                [result setValue:value forKeyPath:dictionaryKeyPath.snakeToCamelCase];
+                [result setValue:value forKeyPath:[dictionaryKeyPath valueForKey:case_method]];
         }
     }
 
@@ -505,25 +524,72 @@ static NSString *MCTypeStringFromPropertyKey(Class class, NSString *key) {
     return result;
 }
 
-- (NSString *)camelToSnakeCase {
-    NSScanner      *scanner      = [NSScanner scannerWithString:self];
-    NSCharacterSet *uppercaseSet = [NSCharacterSet uppercaseLetterCharacterSet];
-    scanner.charactersToBeSkipped = uppercaseSet;
+  - (NSString *)snakeToPascalCase {
+    NSScanner      *scanner       = [NSScanner scannerWithString:self];
+    NSCharacterSet *underscoreSet = [NSCharacterSet characterSetWithCharactersInString:@"_"];
+    scanner.charactersToBeSkipped = underscoreSet;
 
     NSMutableString *result = [NSMutableString string];
     NSString        *buffer = nil;
 
     while (![scanner isAtEnd]) {
-        [scanner scanUpToCharactersFromSet:uppercaseSet intoString:&buffer];
-        [result appendString:[buffer lowercaseString]];
-
-        if (![scanner isAtEnd]) {
-            [result appendString:@"_"];
-            [result appendString:[[self substringWithRange:NSMakeRange(scanner.scanLocation, 1)] lowercaseString]];
-        }
+        BOOL atStartPosition = scanner.scanLocation == 0;
+        [scanner scanUpToCharactersFromSet:underscoreSet intoString:&buffer];
+        [result appendString:atStartPosition && NO ? buffer : [buffer capitalizedString]];
     }
 
     return result;
+}
+
+- (NSString *)camelToSnakeCase {
+//    NSScanner      *scanner      = [NSScanner scannerWithString:self];
+//    NSCharacterSet *uppercaseSet = [NSCharacterSet uppercaseLetterCharacterSet];
+//    scanner.charactersToBeSkipped = uppercaseSet;
+//
+//    NSMutableString *result = [NSMutableString string];
+//    NSString        *buffer = nil;
+//
+//    while (![scanner isAtEnd]) {
+//        [scanner scanUpToCharactersFromSet:uppercaseSet intoString:&buffer];
+//        [result appendString:[buffer lowercaseString]];
+//
+//        if (![scanner isAtEnd]) {
+//            [result appendString:@"_"];
+//            [result appendString:[[self substringWithRange:NSMakeRange(scanner.scanLocation, 1)] lowercaseString]];
+//        }
+//    }
+
+    NSMutableString *output = [NSMutableString string];
+    NSCharacterSet *uppercase = [NSCharacterSet uppercaseLetterCharacterSet];
+    BOOL previousCharacterWasUppercase = FALSE;
+    BOOL currentCharacterIsUppercase = FALSE;
+    unichar currentChar = 0;
+    unichar previousChar = 0;
+    for (NSInteger idx = 0; idx < [self length]; idx += 1) {
+        previousChar = currentChar;
+        currentChar = [self characterAtIndex:idx];
+        previousCharacterWasUppercase = currentCharacterIsUppercase;
+        currentCharacterIsUppercase = [uppercase characterIsMember:currentChar];
+
+        if (!previousCharacterWasUppercase && currentCharacterIsUppercase && idx > 0) {
+            // insert an _ between the characters
+            [output appendString:@"_"];
+        } else if (previousCharacterWasUppercase && !currentCharacterIsUppercase) {
+            // insert an _ before the previous character
+            // insert an _ before the last character in the string
+            if ([output length] > 1) {
+                unichar charTwoBack = [output characterAtIndex:[output length]-2];
+                if (charTwoBack != '_') {
+                    [output insertString:@"_" atIndex:[output length]-1];
+                }
+            }
+        }
+        // Append the current character lowercase
+        [output appendString:[[NSString stringWithCharacters:&currentChar length:1] lowercaseString]];
+    }
+    return output;
+
+//    return result;
 }
 
 @end
@@ -541,7 +607,7 @@ static NSString *MCTypeStringFromPropertyKey(Class class, NSString *key) {
 - (NSArray *)JSONArray {
     NSMutableArray *array = [NSMutableArray array];
     for (RLMObject *object in self) {
-        [array addObject:[object JSONDictionary]];
+        [array addObject:[object JSONDictionary:YES]];
     }
     return [array copy];
 }

@@ -24,7 +24,9 @@
 
 - (instancetype)initWithJSONDictionary:(NSDictionary *)dictionary;
 
-- (NSDictionary *)JSONDictionary;
+    - ( NSDictionary * )JSONMutableDictionary:( BOOL )useCamel;
+    - ( NSDictionary * )JSONDictionary;
+    - ( NSDictionary * )JSONDictionary:( BOOL )useCamel;
 
 - (id)primaryKeyValue;
 
